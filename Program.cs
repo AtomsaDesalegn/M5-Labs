@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging; 
+using Scalar.AspNetCore; 
+using Microsoft.AspNetCore.OpenApi; // 👈 ADD THIS LINE
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,8 +25,11 @@ builder.Host.UseDefaultServiceProvider(options =>
 // =========================================================================
 builder.Services.AddControllers();
 
-// 👇 EXERCISE 6: Add the ProblemDetails service to the DI container
+// EXERCISE 6: Add the ProblemDetails service to the DI container
 builder.Services.AddProblemDetails();
+
+// 🛠️ EXERCISE 7 TODO 2a: Register OpenAPI document generation services
+builder.Services.AddOpenApi();
 
 builder.Services
     .AddAuthentication("Training")
@@ -51,13 +56,23 @@ var app = builder.Build();
 // 🛣️ MIDDLEWARE PIPELINE ORDER (From Session 1)
 // =========================================================================
 
-// 🚀 Placed on the absolute outside edge to catch the correct final HTTP status codes
+// Placed on the absolute outside edge to catch the correct final HTTP status codes
 app.UseMiddleware<RequestLoggingMiddleware>();
 
-// 👇 EXERCISE 6: Catch unexpected crashes and format them as ProblemDetails JSON
-app.UseExceptionHandler(); 
+// 🛠️ EXERCISE 7 TODO 1 & TODO 3: Environment Conditional Tuning
+if (app.Environment.IsDevelopment())
+{
+    // In Development, map the interactive Scalar API documentation explorer
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+}
+else
+{
+    // 🔒 In Production, act strictly: force the exception handler to shield internal stack traces
+    app.UseExceptionHandler(); 
+}
 
-// 👇 EXERCISE 6: Turn empty status codes (like bare 404s/401s) into ProblemDetails JSON
+// Turn empty status codes (like bare 404s/401s) into ProblemDetails JSON across all environments
 app.UseStatusCodePages();
 
 app.UseHttpsRedirection();
@@ -75,7 +90,7 @@ app.MapGet("/api/assessments/results", () => Results.Ok(new
 
 app.MapControllers();
 
-// 👇 EXERCISE 6: Map a test route '/api/error' that intentionally throws
+// EXERCISE 6: Map a test route '/api/error' that intentionally throws
 app.MapGet("/api/error", () =>
 {
     throw new InvalidOperationException("TMS System Failure: Could not connect to the Enrollment Database.");

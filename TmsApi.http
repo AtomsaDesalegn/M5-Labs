@@ -19,3 +19,11 @@ DELETE {{TmsApi_HostAddress}}/api/enrollments/6ae0cfcd
 
 ### Delete a Non-Existent Enrollment (Should return 404)
 DELETE {{TmsApi_HostAddress}}/api/enrollments/does-not-exist
+
+
+
+### Test Exercise 6: Intentionally Crash the API (500)
+GET {{TmsApi_HostAddress}}/api/error
+
+### Test Exercise 6: Empty Status Code Translation (404)
+GET {{TmsApi_HostAddress}}/api/missing-page
