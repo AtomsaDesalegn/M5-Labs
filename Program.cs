@@ -31,8 +31,7 @@ builder.Services.AddAuthorization();
 
 // Registering our Exercise 2 Services
 builder.Services.AddSingleton<EnrollmentWorker>();
-builder.Services.AddScoped<IEnrollmentService, EnrollmentService>();
-
+builder.Services.AddSingleton<IEnrollmentService, EnrollmentService>();
 // --- EXERCISE 3: Strongly-Typed Options & Startup Validation ---
 builder.Services.AddOptions<PaymentOptions>()
     .BindConfiguration("Payments")         // Binds to the "Payments" block in appsettings.json
@@ -47,8 +46,8 @@ var app = builder.Build();
 // =========================================================================
 // 🛣️ MIDDLEWARE PIPELINE ORDER (From Session 1)
 // =========================================================================
-app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseExceptionHandler("/error"); 
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthentication();
