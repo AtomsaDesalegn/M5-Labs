@@ -28,5 +28,14 @@ public class EnrollmentsController(IEnrollmentService enrollmentService): Contro
         return CreatedAtAction(nameof(GetById), new { id = record.Id }, record);
     }
 
+    // Delete/api/entrollments/{id} returns 204 or 404
+    [HttpDelete("{id}")]
+
+    public async Task<IActionResult> Delete(string id)
+    {
+        var deleted = await enrollmentService.DeleteAsync(id);
+        return deleted ? NoContent() : NotFound();
+    }
+
     public record CreateEnrollmentRequest(string StudentId, string CourseCode);
 }
