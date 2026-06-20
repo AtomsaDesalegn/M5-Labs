@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using TmsApi.Data; // 
 
 // --- The contract ---
 public interface IEnrollmentService
@@ -13,71 +15,104 @@ public interface IEnrollmentService
     Task<bool> DeleteAsync(string id);
 }
 
-// --- The in-memory implementation ---
+// --- The database-connected implementation ---
 public class EnrollmentService : IEnrollmentService
 {
-    private readonly Dictionary<string, EnrollmentRecord> _store = new();
+    private readonly TmsDbContext _context; // 👈 Wired up your real DbContext
     private readonly ILogger<EnrollmentService> _logger;
 
-    public EnrollmentService(ILogger<EnrollmentService> logger)
+    public EnrollmentService(TmsDbContext context, ILogger<EnrollmentService> logger)
     {
+        _context = context;
         _logger = logger;
     }
 
-    public Task<EnrollmentRecord> EnrollAsync(string studentId, string courseCode)
+    public async Task<EnrollmentRecord> EnrollAsync(string studentId, string courseCode)
     {
-        // Check for duplicate enrollment (Structured Logging Audit - Exercise 4)
-        var existing = _store.Values
-            .FirstOrDefault(e => e.StudentId == studentId && e.CourseCode == courseCode);
+        if (!int.TryParse(studentId, out int numericStudentId) || !int.TryParse(courseCode, out int numericCourseId))
+        {
+            throw new ArgumentException("Student ID and Course Code must be numeric integers for the database.");
+        }
+
+        // Check for duplicate enrollment inside PostgreSQL
+        var existing = await _context.Enrollments
+            .FirstOrDefaultAsync(e => e.StudentId == numericStudentId && e.CourseId == numericCourseId);
             
         if (existing is not null)
         {
             _logger.LogWarning(
                 "Duplicate enrollment attempt {StudentId} already in {CourseCode} (record {EnrollmentId})",
                 studentId, courseCode, existing.Id);
-            return Task.FromResult(existing);
+                
+            return new EnrollmentRecord(existing.Id.ToString(), studentId, courseCode, existing.EnrolledAt);
         }
 
-        var id = Guid.NewGuid().ToString("N")[..8];
-        var record = new EnrollmentRecord(id, studentId, courseCode, DateTime.UtcNow);
-        _store[id] = record;
+        // Create a new entity item to push down to Postgres
+        var newEntity = new TmsApi.Entities.Enrollment 
+        {
+            StudentId = numericStudentId,
+            CourseId = numericCourseId,
+            Grade = 0.0m, // Set default starting grade
+            EnrolledAt = DateTime.UtcNow
+        };
+
+        _context.Enrollments.Add(newEntity);
+        await _context.SaveChangesAsync(); // Commit row to disk
         
         _logger.LogInformation(
             "Enrolled {StudentId} in {CourseCode} record {EnrollmentId}",
-            studentId, courseCode, id);
+            studentId, courseCode, newEntity.Id);
             
-        return Task.FromResult(record);
+        return new EnrollmentRecord(newEntity.Id.ToString(), studentId, courseCode, newEntity.EnrolledAt);
     }
 
-    public Task<EnrollmentRecord?> GetByIdAsync(string id)
+    public async Task<EnrollmentRecord?> GetByIdAsync(string id)
     {
-        _store.TryGetValue(id, out var record);
+        if (!int.TryParse(id, out int numericId)) return null;
+
+        var record = await _context.Enrollments.FirstOrDefaultAsync(e => e.Id == numericId);
         if (record is null)
         {
             _logger.LogWarning("Enrollment {EnrollmentId} not found", id);
+            return null;
         }
-        return Task.FromResult(record);
+        
+        return new EnrollmentRecord(record.Id.ToString(), record.StudentId.ToString(), record.CourseId.ToString(), record.EnrolledAt);
     }
 
-    public Task<IReadOnlyList<EnrollmentRecord>> GetAllAsync()
+    public async Task<IReadOnlyList<EnrollmentRecord>> GetAllAsync()
     {
-        IReadOnlyList<EnrollmentRecord> all = _store.Values.ToList();
-        return Task.FromResult(all);
+        // Pull directly from the live PostgreSQL table!
+        var dbEnrollments = await _context.Enrollments.ToListAsync();
+
+        return dbEnrollments.Select(e => new EnrollmentRecord(
+            e.Id.ToString(),
+            e.StudentId.ToString(),
+            e.CourseId.ToString(),
+            e.EnrolledAt
+        )).ToList();
     }
 
-    public Task<bool> DeleteAsync(string id)
+    public async Task<bool> DeleteAsync(string id)
     {
-        var removed = _store.Remove(id);
-        if (removed)
-            _logger.LogInformation("Deleted enrollment {EnrollmentId}", id);
-        else
+        if (!int.TryParse(id, out int numericId)) return false;
+
+        var enrollment = await _context.Enrollments.FindAsync(numericId);
+        if (enrollment == null)
+        {
             _logger.LogWarning("Delete failed enrollment {EnrollmentId} not found", id);
-            
-        return Task.FromResult(removed);
+            return false;
+        }
+
+        _context.Enrollments.Remove(enrollment);
+        await _context.SaveChangesAsync();
+        
+        _logger.LogInformation("Deleted enrollment {EnrollmentId}", id);
+        return true;
     }
 }
 
-// --- The data shape ---
+// --- The data shape (Kept exact signature to prevent breaking contracts) ---
 public record EnrollmentRecord(
     string Id,
     string StudentId,

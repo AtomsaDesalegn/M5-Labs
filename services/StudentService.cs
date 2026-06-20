@@ -1,60 +1,78 @@
-using TmsApi.Models;
+using Microsoft.EntityFrameworkCore;
+using TmsApi.Models; // This contains your API DTO Model (Student)
+using TmsApi.Data;   // This contains your TmsDbContext
 
 namespace TmsApi.services;
 
-public class StudentService : IStudentService
+public class StudentService(TmsDbContext context) : IStudentService
 {
-    // A temporary in-memory list to act as your database for now
-    private readonly List<Student> _students = new()
+    // 1. Get All Students from PostgreSQL and map to API Models
+    public async Task<IEnumerable<TmsApi.Models.Student>> GetAllAsync()
     {
-        new Student { Id = "STU-001", Name = "Abeba", Age = 20, GPA = 3.8m },
-        new Student { Id = "STU-002", Name = "Chala", Age = 22, GPA = 3.5m }
-    };
+        var dbStudents = await context.Students.ToListAsync();
 
-    public async Task<IEnumerable<Student>> GetAllAsync()
-    {
-        await Task.Delay(10); // Simulate a fast async database fetch
-        return _students;
+        // Map list of Entities.Student to IEnumerable<Models.Student>
+        return dbStudents.Select(s => new TmsApi.Models.Student
+        {
+            Id = s.Id.ToString(), // Converts int Id to string format
+            Name = s.Name,
+            Age = 20,             // Default fallback age required by your model spec
+            GPA = s.GPA
+        });
     }
 
-    public async Task<Student?> GetByIdAsync(string id)
+    // 2. Get Student By ID and map to API Model
+    public async Task<TmsApi.Models.Student?> GetByIdAsync(string id)
     {
-        await Task.Delay(10);
-        return _students.FirstOrDefault(s => s.Id == id);
+        if (!int.TryParse(id, out int numericId)) return null;
+
+        var dbStudent = await context.Students.FirstOrDefaultAsync(s => s.Id == numericId);
+        if (dbStudent == null) return null;
+
+        // Map single Entities.Student to Models.Student
+        return new TmsApi.Models.Student
+        {
+            Id = dbStudent.Id.ToString(),
+            Name = dbStudent.Name,
+            Age = 20, 
+            GPA = dbStudent.GPA
+        };
     }
 
-    // 3. Create a New Student 💡 (Added to fix your exact error)
-    public async Task<Student> CreateAsync(string name, int age, decimal gpa)
+    // 3. Create a New Student in PostgreSQL and return as API Model
+    public async Task<TmsApi.Models.Student> CreateAsync(string name, int age, decimal gpa)
     {
-        await Task.Delay(10);
-        
-        // Generate next ID based on count
-        var nextId = $"STU-{_students.Count + 1:D3}";
-        
-        var newStudent = new Student 
+        // Notice we are explicitly instantiating the database entity type here to save it
+        var newDbStudent = new TmsApi.Entities.Student 
         { 
-            Id = nextId, 
             Name = name, 
-            Age = age, 
-            GPA = gpa 
+            GPA = gpa,
+            RegistrationNumber = $"TMS-2026-{Guid.NewGuid().ToString()[..4].ToUpper()}"
         };
         
-        _students.Add(newStudent);
-        return newStudent;
+        context.Students.Add(newDbStudent);
+        await context.SaveChangesAsync(); 
+
+        // Map and return it back as the required API model type
+        return new TmsApi.Models.Student
+        {
+            Id = newDbStudent.Id.ToString(),
+            Name = newDbStudent.Name,
+            Age = age,
+            GPA = newDbStudent.GPA
+        };
     }
 
-    // 4. Delete a Student 💡 (Added to keep your contract fully satisfied)
+    // 4. Delete a Student from PostgreSQL
     public async Task<bool> DeleteAsync(string id)
     {
-        await Task.Delay(10);
-        
-        var student = _students.FirstOrDefault(s => s.Id == id);
-        if (student == null) 
-        {
-            return false;
-        }
+        if (!int.TryParse(id, out int numericId)) return false;
 
-        _students.Remove(student);
+        var student = await context.Students.FindAsync(numericId);
+        if (student == null) return false;
+
+        context.Students.Remove(student);
+        await context.SaveChangesAsync(); 
         return true;
     }
 }
