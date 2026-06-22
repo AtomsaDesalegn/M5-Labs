@@ -34,7 +34,7 @@ public class StudentService(TmsDbContext context) : IStudentService
         {
             Id = dbStudent.Id.ToString(),
             Name = dbStudent.Name,
-            Age = 20, 
+            Age = 20,
             GPA = dbStudent.GPA
         };
     }
@@ -43,15 +43,15 @@ public class StudentService(TmsDbContext context) : IStudentService
     public async Task<TmsApi.Models.Student> CreateAsync(string name, int age, decimal gpa)
     {
         // Notice we are explicitly instantiating the database entity type here to save it
-        var newDbStudent = new TmsApi.Entities.Student 
-        { 
-            Name = name, 
+        var newDbStudent = new TmsApi.Entities.Student
+        {
+            Name = name,
             GPA = gpa,
             RegistrationNumber = $"TMS-2026-{Guid.NewGuid().ToString()[..4].ToUpper()}"
         };
-        
+
         context.Students.Add(newDbStudent);
-        await context.SaveChangesAsync(); 
+        await context.SaveChangesAsync();
 
         // Map and return it back as the required API model type
         return new TmsApi.Models.Student
@@ -72,7 +72,27 @@ public class StudentService(TmsDbContext context) : IStudentService
         if (student == null) return false;
 
         context.Students.Remove(student);
-        await context.SaveChangesAsync(); 
+        await context.SaveChangesAsync();
         return true;
+    }
+
+
+    public async Task<IEnumerable<TmsApi.Models.Student>> GetPagedStudentsAsync(int pageNumber, int pageSize = 20)
+    {
+        if (pageNumber < 1) pageNumber = 1;
+
+        return await context.Students
+            .OrderBy(s => s.Name)
+            .ThenBy(s => s.Id)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(s => new TmsApi.Models.Student
+            {
+                Id = s.Id.ToString(),
+                Name = s.Name,
+                Age = 20, // Default fallback age matching your other endpoints
+                GPA = s.GPA
+            })
+            .ToListAsync(); // Placed perfectly at the end
     }
 }

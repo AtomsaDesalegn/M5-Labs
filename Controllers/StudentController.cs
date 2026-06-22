@@ -29,8 +29,6 @@ public class StudentController(IStudentService studentService) : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateStudentRequest request)
     {
         var record = await studentService.CreateAsync(request.Name, request.Age, request.GPA);
-        
-        // 🎯 Fixed: Explicit string name mapping to ensure metadata validation passes safely
         return CreatedAtAction("GetById", new { id = record.Id }, record);
     }
 
@@ -40,6 +38,15 @@ public class StudentController(IStudentService studentService) : ControllerBase
     {
         var deleted = await studentService.DeleteAsync(id);
         return deleted ? NoContent() : NotFound();
+    }
+
+    // GET /api/students/paged -> returns stable sorted, paginated rows
+    [HttpGet("paged")]
+    public async Task<IActionResult> GetPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        // Fixed: Removed the underscore to match your primary constructor variable name
+        var students = await studentService.GetPagedStudentsAsync(page, pageSize); 
+        return Ok(students);
     }
 }
 
